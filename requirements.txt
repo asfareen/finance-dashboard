@@ -1,7 +1,8 @@
 streamlit
-yfinance
 pandas
-sqlalchemy
 plotly
-matplotlib
+yfinance
+sqlalchemy
 openpyxl
+scikit-learn
+streamlit-authenticator

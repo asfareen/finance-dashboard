@@ -5,62 +5,71 @@ import plotly.express as px
 import yfinance as yf
 from sqlalchemy import create_engine
 from io import BytesIO
-from auth import login
+from auth import login  # Ensure this is correct
+from predict_utils import predict_stock
 
-st.set_page_config(layout='wide')
-login()
-st.title("📈 Enhanced Stock Dashboard")
+st.set_page_config(
+    page_title="📊 StockX Dashboard",
+    page_icon="📈",
+    layout="wide",  # Makes it full-width for dashboard
+)
 
-# Load data
+if not login():
+    st.stop()
+
+# Load the data from the database
 engine = create_engine('sqlite:///stocks.db')
 df = pd.read_sql('stock_data', engine)
 
-# Search
-search_term = st.text_input("🔍 Search by Name or Ticker")
-if search_term:
-    df = df[df['Name'].str.contains(search_term, case=False, na=False) | 
-            df['Ticker'].str.contains(search_term.upper(), na=False)]
+# Make sure df is loaded properly before accessing it
+if df.empty:
+    st.error("Stock data is not available. Please check the database.")
+    st.stop()
 
-# P/E filter
-pe_filter = st.slider("📊 Max P/E Ratio", 0, 100, 100)
-df = df[df['P/E Ratio'] <= pe_filter]
+# UI components
+st.title("📈 Enhanced Stock Dashboard")
 
-# Sector filter
-sector_filter = st.multiselect("📂 Filter by Sector", df['Sector'].unique(), default=df['Sector'].unique())
-df = df[df['Sector'].isin(sector_filter)]
+# Add Tabs
+tab1, tab2, tab3 = st.tabs(["📊 Overview", "📈 Forecast", "📥 Downloads"])
 
-# Pagination
-page_size = 5
-page_num = st.number_input("📄 Page number", 1, (len(df) // page_size + 1))
-start = (page_num - 1) * page_size
-end = start + page_size
-df_paginated = df.iloc[start:end]
+with tab1:
+    st.subheader("P/E Ratio Comparison")
+    st.plotly_chart(px.bar(df, x='Ticker', y='P/E Ratio', color='Sector'), use_container_width=True)
 
-st.dataframe(df_paginated)
+    st.subheader("Dividend Yield Comparison")
+    st.plotly_chart(px.bar(df, x='Ticker', y='Dividend Yield', color='Sector'), use_container_width=True)
 
-# Download
-csv = df.to_csv(index=False).encode('utf-8')
-excel_io = BytesIO()
-df.to_excel(excel_io, index=False, engine='openpyxl')
+    st.subheader("📉 Historical Price Chart")
+    selected_stock = st.selectbox("Choose stock", df['Ticker'].unique())
+    hist = yf.Ticker(selected_stock).history(period="6mo")
+    fig = go.Figure(data=[go.Candlestick(
+        x=hist.index,
+        open=hist['Open'], high=hist['High'],
+        low=hist['Low'], close=hist['Close']
+    )])
+    fig.update_layout(title=f"{selected_stock} - Last 6 Months", xaxis_rangeslider_visible=False)
+    st.plotly_chart(fig, use_container_width=True)
 
-st.download_button("📥 Download CSV", csv, "stocks.csv", "text/csv")
-st.download_button("📥 Download Excel", excel_io.getvalue(), "stocks.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+with tab2:
+    st.subheader("🔮 Stock Price Forecast")
 
-# Bar Charts
-st.subheader("P/E Ratio Comparison")
-st.plotly_chart(px.bar(df, x='Ticker', y='P/E Ratio', color='Sector'), use_container_width=True)
+    selected = st.selectbox("Select a stock for forecast", df['Ticker'].unique())
+    forecast_days = st.slider("Days to forecast", 7, 60, 30)
 
-st.subheader("Dividend Yield Comparison")
-st.plotly_chart(px.bar(df, x='Ticker', y='Dividend Yield', color='Sector'), use_container_width=True)
+    with st.spinner("Predicting future stock prices..."):
+        forecast_df = predict_stock(selected, forecast_days)
 
-# Historical Chart
-st.subheader("📉 Historical Price Chart")
-selected_stock = st.selectbox("Choose stock", df['Ticker'].unique())
-hist = yf.Ticker(selected_stock).history(period="6mo")
-fig = go.Figure(data=[go.Candlestick(
-    x=hist.index,
-    open=hist['Open'], high=hist['High'],
-    low=hist['Low'], close=hist['Close']
-)])
-fig.update_layout(title=f"{selected_stock} - Last 6 Months", xaxis_rangeslider_visible=False)
-st.plotly_chart(fig, use_container_width=True)
+    if forecast_df.empty:
+        st.error("Prediction failed. Please try another stock.")
+    else:
+        st.line_chart(forecast_df.set_index("Date"))
+        st.dataframe(forecast_df)
+
+with tab3:
+    csv = df.to_csv(index=False).encode('utf-8')
+    excel_io = BytesIO()
+    df.to_excel(excel_io, index=False, engine='openpyxl')
+
+    st.download_button("📥 Download CSV", csv, "stocks.csv", "text/csv")
+    st.download_button("📥 Download Excel", excel_io.getvalue(), "stocks.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+

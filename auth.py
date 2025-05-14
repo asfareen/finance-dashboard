@@ -1,25 +1,33 @@
 import streamlit as st
-import os
+import streamlit_authenticator as stauth
+
+names = ['Asfareen']
+usernames = ['asfareen']
+hashed_passwords = [
+    '$2b$12$AbcdEfGhIjKlMnOpQrStuvWxYz1234567890'  # <- Use your actual hashed password
+]
+
+authenticator = stauth.Authenticate(
+    names=names,
+    usernames=usernames,
+    password_hashes=hashed_passwords,
+    cookie_name='stock_dashboard',
+    key='abcdef',
+    cookie_expiry_days=30
+)
 
 def login():
-    st.sidebar.title("Login")
-    username = st.sidebar.text_input("Username")
-    password = st.sidebar.text_input("Password", type="password")
+    name, authentication_status, username = authenticator.login('Login', 'sidebar')
+    if authentication_status:
+        st.session_state['logged_in'] = True
+        st.success(f'Welcome, {name}!')
+    elif authentication_status is False:
+        st.error('Username/password is incorrect')
+    elif authentication_status is None:
+        st.warning('Please enter your username and password')
+    return authentication_status
 
-    if st.sidebar.button("Login"):
-        # Get credentials from secrets
-        stored_username = st.secrets["username"]
-        stored_password = st.secrets["password"]
 
-        if username == stored_username and password == stored_password:
-            st.session_state['logged_in'] = True
-        else:
-            st.sidebar.error("Invalid credentials")
 
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
 
-if not st.session_state['logged_in']:
-    login()
-    st.stop()
 
